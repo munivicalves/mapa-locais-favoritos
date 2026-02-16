@@ -7,8 +7,8 @@ import {
 } from "react-leaflet";
 import { useState, useEffect } from "react";
 import { useFavorites } from "../context/FavoritesContext";
+import ConfirmSaveModal from "./ConfirmSaveModal";
 import L from "leaflet";
-
 import iconUrl from "leaflet/dist/images/marker-icon.png";
 import shadowUrl from "leaflet/dist/images/marker-shadow.png";
 
@@ -30,12 +30,36 @@ const selectedIcon = new L.Icon({
 const UBERLANDIA_POSITION = [-18.9186, -48.2772];
 
 /* Clique no mapa */
-function ClickHandler({ onSelect }) {
+function ClickHandler({ onSelect, onAddress }) {
   useMapEvents({
-    click(e) {
+    async click(e) {
       onSelect(e.latlng);
+
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${e.latlng.lat}&lon=${e.latlng.lng}`,
+      );
+
+      const data = await response.json();
+
+      if (data?.address) {
+        const rua = data.address.road || "";
+        const numero = data.address.house_number || "";
+        const bairro = data.address.suburb || data.address.neighbourhood || "";
+        const cidade =
+          data.address.city ||
+          data.address.town ||
+          data.address.municipality ||
+          "";
+        const pais = data.address.country || "";
+
+        const linha1 = [rua, numero].filter(Boolean).join(", ");
+        const linha2 = [bairro, cidade, pais].filter(Boolean).join(", ");
+
+        onAddress([linha1, linha2].filter(Boolean).join(" - "));
+      }
     },
   });
+
   return null;
 }
 
@@ -54,11 +78,12 @@ function MapCenter({ position }) {
 
 export default function MapView({ selectedFavorite }) {
   const { favorites, addFavorite } = useFavorites();
-
   const [selectedPosition, setSelectedPosition] = useState(null);
   const [search, setSearch] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [searchResult, setSearchResult] = useState(null);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [selectedAddress, setSelectedAddress] = useState("");
 
   /* Autocomplete com debounce */
   useEffect(() => {
@@ -87,24 +112,28 @@ export default function MapView({ selectedFavorite }) {
       lng: Number(item.lon),
     };
 
-    setSearch(formatInputValue(item));
+    const formatted = formatInputValue(item);
+
+    setSearch(formatted);
+    setSelectedAddress(formatted);
     setSearchResult(coords);
     setSelectedPosition(coords);
     setSuggestions([]);
   }
 
-  function handleSave() {
-    const name = prompt("Nome do local:");
+  function handleSave(name) {
     if (!name || !selectedPosition) return;
 
     addFavorite({
       id: Date.now(),
       name,
+      address: selectedAddress,
       lat: selectedPosition.lat,
       lng: selectedPosition.lng,
     });
 
     setSelectedPosition(null);
+    setSelectedAddress("");
   }
 
   function extractHouseNumber(text) {
@@ -152,24 +181,36 @@ export default function MapView({ selectedFavorite }) {
   return (
     <div className="w-full space-y-4">
       {/* BUSCA */}
-      {/* BUSCA */}
-      <div className="relative z-50 max-w-3xl mx-auto">
+      <div className="relative z-40 max-w-3xl mx-auto">
         <input
           type="text"
           placeholder="Buscar endereço ou local..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="
-      w-full px-5 py-3 text-sm
-      border border-gray-300
-      rounded-xl shadow-md
-      focus:outline-none focus:ring-2 focus:ring-blue-500
-    "
+            w-full px-5 py-3
+            rounded-full
+            border border-gray-200
+            shadow-sm
+            focus:outline-none
+            focus:ring-2 focus:ring-blue-500
+            placeholder-gray-400
+          "
           autoComplete="off"
         />
 
         {Array.isArray(suggestions) && suggestions.length > 0 && (
-          <ul className="absolute mt-2 w-full bg-white rounded-xl shadow-xl border overflow-hidden">
+          <ul
+            className="
+              absolute mt-2 w-full
+              bg-white
+              border border-gray-200
+              rounded-xl
+              shadow-xl
+              max-h-60 overflow-auto
+              z-50
+            "
+          >
             {suggestions.map((item) => {
               const formatted = formatSuggestion(item);
 
@@ -194,7 +235,14 @@ export default function MapView({ selectedFavorite }) {
 
       {/* MAPA */}
       <div className="flex justify-center">
-        <div className="w-full max-w-3xl h-[280px] rounded-2xl overflow-hidden shadow-xl border">
+        <div
+          className="w-full max-w-3xl h-[320px]
+          rounded-2xl
+          overflow-hidden
+          shadow-xl
+          border border-gray-100
+          bg-white"
+        >
           <MapContainer
             center={UBERLANDIA_POSITION}
             zoom={13}
@@ -205,7 +253,10 @@ export default function MapView({ selectedFavorite }) {
               attribution="&copy; OpenStreetMap contributors"
             />
 
-            <ClickHandler onSelect={setSelectedPosition} />
+            <ClickHandler
+              onSelect={setSelectedPosition}
+              onAddress={setSelectedAddress}
+            />
 
             {searchResult && (
               <MapCenter position={[searchResult.lat, searchResult.lng]} />
@@ -251,19 +302,24 @@ export default function MapView({ selectedFavorite }) {
             </div>
 
             <button
-              onClick={handleSave}
-              className="
-          w-full py-2.5
-          bg-blue-600 text-white
-          rounded-xl font-medium
-          hover:bg-blue-700 transition
-        "
+              onClick={() => setShowSaveModal(true)}
+              className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
             >
               Salvar local
             </button>
           </div>
         </div>
       )}
+
+      <ConfirmSaveModal
+        open={showSaveModal}
+        address={search}
+        onClose={() => setShowSaveModal(false)}
+        onConfirm={(name) => {
+          handleSave(name);
+          setShowSaveModal(false);
+        }}
+      />
     </div>
   );
 }

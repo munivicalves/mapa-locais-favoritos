@@ -1,29 +1,38 @@
-import { createContext, useContext, useEffect, useState } from 'react'
-  const FavoritesContext = createContext()
+import { createContext, useContext, useState } from "react";
 
-  export function FavoritesProvider({ children }) {
-  const [favorites, setFavorites] = useState(() => {
-  const saved = localStorage.getItem('favorites')
+const FavoritesContext = createContext();
 
-    return saved ? JSON.parse(saved) : []
-    })
-  function addFavorite(local) {
-    setFavorites(prev => [...prev, local])
-    }
+export function FavoritesProvider({ children }) {
+  const [favorites, setFavorites] = useState([]);
+
+  function addFavorite(favorite) {
+    setFavorites((prev) => [...prev, favorite]);
+  }
+
   function removeFavorite(id) {
-    setFavorites(prev => prev.filter(local => local.id !== id))
-    }
-  useEffect(() => {
-    localStorage.setItem('favorites', JSON.stringify(favorites))
-    }, [favorites])
+    setFavorites((prev) => prev.filter((fav) => fav.id !== id));
+  }
+
+  function renameFavorite(id, newName) {
+    setFavorites((prev) =>
+      prev.map((fav) => (fav.id === id ? { ...fav, name: newName } : fav)),
+    );
+  }
 
   return (
     <FavoritesContext.Provider
-    value={{ favorites, addFavorite, removeFavorite }}>
-    {children}
+      value={{
+        favorites,
+        addFavorite,
+        removeFavorite,
+        renameFavorite,
+      }}
+    >
+      {children}
     </FavoritesContext.Provider>
-    )
-  }
-  export function useFavorites() {
-  return useContext(FavoritesContext)
+  );
+}
+
+export function useFavorites() {
+  return useContext(FavoritesContext);
 }
